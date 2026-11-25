@@ -203,7 +203,10 @@ object Hm10 {
 
 ### 5.3 BLE 처리 핵심
 
-1. **스캔**: `BluetoothLeScanner.startScan()`에 `ScanFilter.Builder().setDeviceName("UMBRELLA")` 필터를 걸어 찾습니다. 광고에 Service UUID `FFE0`이 포함되어 있다면 UUID 필터도 쓸 수 있습니다(7장 "확인 필요" 참고). 스캔은 최대 10초로 제한합니다.
+1. **스캔**: `BluetoothLeScanner.startScan()`에 필터를 걸어 찾습니다. 스캔은 최대 10초로 제한합니다.
+   - 기기는 광고에 Service UUID `FFE0`(Incomplete List of 16-bit Service UUIDs)과 이름 `UMBRELLA`(Complete Local Name)를 넣어 보냅니다.
+   - 권장 필터: `ScanFilter.Builder().setServiceUuid(ParcelUuid(Hm10.SERVICE)).setDeviceName("UMBRELLA").build()`
+   - 광고에는 이 밖에도 Manufacturer data(Company ID `0x4D48`, 값은 모듈 MAC 주소)와 Service Data(UUID `0xB000`)가 들어 있습니다. 이 둘은 HM-10 펌웨어가 자동으로 넣는 값이라 앱은 의존하지 않습니다.
 2. **연결**: `device.connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE)`
    - 처음 연결할 때는 `autoConnect = false`로 빠르게 연결합니다.
    - 백그라운드 재연결은 `autoConnect = true`로 연결을 맡겨 두면 기기가 범위에 돌아왔을 때 자동으로 붙습니다.
@@ -332,7 +335,7 @@ UI는 `GuardService`가 노출하는 `StateFlow<GuardUiState>`(연결 상태, �
 | 보안 (DISARM 인증) | **결정됨** | HM-10 PIN 본딩(`TYPE3`)으로 처리합니다(5.3.1). 메시지 형식은 바뀌지 않으므로 proto=1을 유지합니다. |
 | 광고 이름 | **결정됨** | `UMBRELLA`. 스캔은 이름으로 거르지만, 연결은 등록된 MAC 주소로 합니다. |
 | PIN 전달 방법 | 결정 필요 | 사용자가 PIN을 어떻게 알게 할지(기기 스티커, 설명서 등)는 제품 쪽에서 정합니다. 앱은 PIN을 입력받는 시스템 창만 띄웁니다. |
-| 광고에 FFE0 UUID 포함 여부 | 확인 필요 | 이 모듈이 광고 패킷에 Service UUID를 넣는지 nRF Connect로 확인해야 합니다. 포함되어 있으면 UUID로 스캔 필터를 걸 수 있습니다. |
+| 광고에 FFE0 UUID 포함 여부 | **확인됨** | 광고에 `FFE0`이 포함되어 있습니다(HMSoft V608, nRF Connect로 확인). UUID와 이름으로 함께 스캔 필터를 겁니다(5.3). |
 | 동시 연결 | 제약 | HM-10은 한 번에 폰 한 대만 연결됩니다. 다른 폰이 연결되어 있으면 스캔에 나타나지 않습니다. |
 | 감지 감도 | 조정 중 | 기기 쪽 임계값은 실험으로 조정 중입니다. 앱에는 영향이 없습니다. |
 
@@ -342,3 +345,4 @@ UI는 `GuardService`가 노출하는 `StateFlow<GuardUiState>`(연결 상태, �
 |---|---|---|---|
 | 2026-11-25 | 1.0.0 | 1 | 최초 작성. `STATE:`/`OK:`/`ERR:` 형식 도입, `PING`/`INFO` 추가, 데이터 수신 즉시 연결 인식 |
 | 2026-11-25 | 1.0.0 | 1 | 광고 이름 `UMBRELLA`, PIN 본딩 필수(5.3.1)로 변경. 메시지 형식은 그대로 |
+| 2026-11-25 | 1.0.0 | 1 | 실기기 확인 결과 반영: 광고에 FFE0 포함, 스캔 필터 권장안 추가(5.3) |
