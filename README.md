@@ -89,6 +89,20 @@ pio device monitor               # 시리얼 모니터 (115200 baud)
 
 시리얼 모니터를 열면 Uno가 리셋되면서 새 파일이 생깁니다. 직전 실험 데이터는 `p`로 확인하세요.
 
+### 데이터 분석
+
+[`tools/analyze_log.py`](tools/analyze_log.py)는 SD 카드의 `LOGnn.CSV`와 `pio device monitor` 로그(`d`/`p`로 출력한 내용)를 모두 읽습니다. Python 3과 numpy가 필요하고, `--plot`을 쓰려면 matplotlib도 필요합니다.
+
+```bash
+python tools/analyze_log.py logs/device-monitor-xxx.log --plot
+python tools/analyze_log.py LOG07.CSV --gyro 1000 --count 3   # 임계값을 바꿔 시뮬레이션
+```
+
+- 정지 상태의 노이즈를 계산합니다.
+- 움직임 구간을 찾아 스파이크, 짧은 흔들림, 긴 흔들림, 자세 변화로 나눕니다.
+- `main` 감지기의 경보 판정을 재현합니다.
+- `--plot`을 주면 `logs/plots/`에 그래프를 저장합니다.
+
 ## 감지 임계값 조정
 
 [`src/main/main.cpp`](src/main/main.cpp) 맨 위의 값으로 감도를 조정합니다.
