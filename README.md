@@ -57,6 +57,34 @@ DISARMED ──ARM──▶ SETTLING (3 s) ──▶ ARMED ──움직임 감�
 > - HM-10 RXD는 3.3 V 입력입니다. D9의 5 V 신호는 분압 회로를 거쳐 연결합니다(예: 1 kΩ / 2 kΩ).
 > - 부저의 플라이백 다이오드는 띠(캐소드)가 +5 V 쪽을 향하게 꽂습니다. 반대로 꽂으면 부저가 단락되어 소리가 나지 않습니다.
 
+## 개발 환경 준비
+
+### 펌웨어 빌드와 업로드
+
+1. [VS Code](https://code.visualstudio.com/)와 [Git](https://git-scm.com/)을 설치합니다.
+2. VS Code 확장 **PlatformIO IDE**를 설치합니다. 확장이 자체 Python과 PlatformIO Core를 알아서 설치하므로, Python이나 `pip install platformio`는 따로 필요 없습니다.
+3. 저장소를 받아 VS Code로 폴더를 엽니다.
+   ```bash
+   git clone https://github.com/LINKEDLIST-PIS/umbrella-guard.git
+   ```
+4. 하단 상태바에서 환경(`env:main` 등)을 고르고 빌드(✓) 버튼을 누릅니다. 처음 빌드할 때 AVR 컴파일러, Arduino 프레임워크, 라이브러리를 자동으로 내려받습니다. 몇 분 걸리고 인터넷 연결이 필요합니다.
+
+터미널에서 `pio` 명령을 쓰려면 VS Code의 **PlatformIO Core CLI** 터미널을 엽니다. 일반 터미널에서 쓰려면 `%USERPROFILE%\.platformio\penv\Scripts`(macOS/Linux는 `~/.platformio/penv/bin`)를 PATH에 추가합니다.
+
+> **업로드가 안 될 때**
+> - 시리얼 모니터가 열려 있으면 포트가 잡혀 있어서 업로드가 실패합니다. 모니터를 닫고 업로드하세요.
+> - 호환 Uno(CH340 USB 칩)는 Windows에서 COM 포트로 잡히지 않을 수 있습니다. 이때는 CH340 드라이버를 설치해야 합니다.
+
+### 데이터 분석 스크립트 (선택)
+
+`tools/analyze_log.py`를 쓸 때만 필요합니다.
+
+1. [Python](https://www.python.org/) 3.10 이상을 설치합니다. Windows에서는 설치 화면에서 "Add python.exe to PATH"를 체크합니다.
+2. 패키지를 설치합니다.
+   ```bash
+   pip install -r tools/requirements.txt
+   ```
+
 ## 빌드 환경
 
 `platformio.ini`에서 `build_src_filter`로 소스를 나눕니다.
@@ -103,7 +131,7 @@ pio device monitor               # 시리얼 모니터 (115200 baud)
 
 ### 데이터 분석
 
-[`tools/analyze_log.py`](tools/analyze_log.py)는 SD 카드의 `LOGnn.CSV`와 `pio device monitor` 로그(`d`/`p`로 출력한 내용)를 모두 읽습니다. Python 3과 numpy가 필요하고, `--plot`을 쓰려면 matplotlib도 필요합니다.
+[`tools/analyze_log.py`](tools/analyze_log.py)는 SD 카드의 `LOGnn.CSV`와 `pio device monitor` 로그(`d`/`p`로 출력한 내용)를 모두 읽습니다. 필요한 패키지는 [개발 환경 준비](#데이터-분석-스크립트-선택)를 참고하세요.
 
 ```bash
 python tools/analyze_log.py logs/device-monitor-xxx.log --plot
