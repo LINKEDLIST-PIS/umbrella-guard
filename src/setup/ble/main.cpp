@@ -27,12 +27,13 @@ BleState state;
 char resp[48];
 
 // AT 명령 전송 후 응답을 resp 에 받는다. 응답 길이 반환.
-static uint8_t at(const char* cmd, uint16_t waitMs = 600, bool echoCmd = true) {
+// secret=true 면 명령은 "AT+PASS******" 로, 응답의 숫자는 '*' 로 가려서 출력한다
+// (resp 원문은 그대로 두어 검증에 사용).
+static uint8_t at(const char* cmd, uint16_t waitMs = 600, bool secret = false) {
   while (ble.available()) ble.read();
-  if (echoCmd) {
-    Serial.print(F("  > "));
-    Serial.println(cmd);
-  }
+  Serial.print(F("  > "));
+  if (secret) Serial.println(F("AT+PASS******"));
+  else Serial.println(cmd);
   ble.print(cmd);
   uint8_t n = 0;
   uint32_t t0 = millis();
@@ -44,7 +45,15 @@ static uint8_t at(const char* cmd, uint16_t waitMs = 600, bool echoCmd = true) {
   }
   resp[n] = '\0';
   Serial.print(F("  < "));
-  Serial.println(n ? resp : "(응답 없음)");
+  if (!n) {
+    Serial.println(F("(응답 없음)"));
+  } else {
+    for (uint8_t i = 0; i < n; i++) {
+      char c = resp[i];
+      Serial.write(secret && c >= '0' && c <= '9' ? '*' : c);
+    }
+    Serial.println();
+  }
   return n;
 }
 
@@ -73,6 +82,18 @@ static bool readPin(char* pin) {
   }
 }
 
+// 같은 숫자 반복(000000, 777777), 연속 숫자(123456, 654321), 공개된 예시 값 거부
+static bool weakPin(const char* p) {
+  bool same = true, up = true, down = true;
+  for (uint8_t i = 1; i < 6; i++) {
+    if (p[i] != p[0]) same = false;
+    if (p[i] != p[i - 1] + 1) up = false;
+    if (p[i] != p[i - 1] - 1) down = false;
+  }
+  // 482916: 이전 버전 안내문의 예시 값이라 저장소에 공개되어 있음
+  return same || up || down || strcmp(p, "482916") == 0;
+}
+
 void setup() {
   Serial.begin(SERIAL_BAUD);
   ble.begin(BLE_BAUD);
@@ -92,13 +113,13 @@ void setup() {
 
   char pin[8];
   while (true) {
-    Serial.println(F("\n2) 6 자리 PIN 을 입력하고 Enter (예: 482916). 000000 / 123456 은 사용 불가"));
+    Serial.println(F("\n2) 새 6 자리 PIN 을 입력하고 Enter (직접 정한 무작위 숫자. 같은 숫자 반복/연속 숫자 불가)"));
     if (!readPin(pin)) {
       Serial.println(F("   숫자 6 자리만 입력하세요."));
       continue;
     }
-    if (strcmp(pin, "000000") == 0 || strcmp(pin, "123456") == 0) {
-      Serial.println(F("   기본값/추측 쉬운 PIN 은 사용할 수 없습니다."));
+    if (weakPin(pin)) {
+      Serial.println(F("   추측하기 쉽거나 공개된 PIN 은 사용할 수 없습니다."));
       continue;
     }
     Serial.println(F("   PIN 입력됨 (화면에 표시하지 않음). 이 PIN 을 따로 기록해 두세요."));
@@ -112,8 +133,7 @@ void setup() {
   if (!ok()) fail(F("이름 설정 실패"));
 
   snprintf(cmd, sizeof(cmd), "AT+PASS%s", pin);
-  Serial.println(F("  > AT+PASS******"));
-  at(cmd, 600, false);
+  at(cmd, 600, true);
   if (!ok()) fail(F("PIN 설정 실패"));
 
   at("AT+TYPE3");
@@ -129,7 +149,7 @@ void setup() {
   at("AT+TYPE?");
   size_t len = strlen(resp);
   bool typeOk = len > 0 && resp[len - 1] == '3';
-  at("AT+PASS?", 600);  // 응답에 PIN 이 보이지만 로컬 시리얼 모니터에만 출력됨
+  at("AT+PASS?", 600, true);
   bool pinOk = strstr(resp, pin) != nullptr;
 
   Serial.println();
