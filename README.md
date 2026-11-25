@@ -20,11 +20,15 @@ DISARMED ──ARM──▶ SETTLING (3 s) ──▶ ARMED ──움직임 감�
 
 명령은 BLE와 USB 시리얼 양쪽에서 받습니다. 대소문자는 구분하지 않습니다.
 
-| 명령 | 설명 |
-|---|---|
-| `ARM` | 보관 모드 시작 |
-| `DISARM` | 보관 모드와 경보 해제 |
-| `STATUS` | 현재 상태 응답 |
+| 명령 | 설명 | 응답 |
+|---|---|---|
+| `ARM` | 보관 모드 시작 | `OK:ARM`, `STATE:SETTLING`, `STATE:ARMED` |
+| `DISARM` | 보관 모드와 경보 해제 | `OK:DISARM`, `STATE:DISARMED` |
+| `STATUS` | 현재 상태 조회 | `STATE:<상태>` |
+| `PING` | 연결 확인 | `PONG` |
+| `INFO` | 펌웨어/프로토콜 버전 | `INFO:fw=1.0.0,proto=1,sensor=ok` |
+
+경보 중에는 `ALERT:MOVED`를 2초마다 보냅니다. BLE UUID, 메시지 형식, Android 앱 요구사항은 [docs/APP_SPEC.md](docs/APP_SPEC.md)에 정리되어 있습니다.
 
 ## 하드웨어
 
@@ -65,6 +69,14 @@ DISARMED ──ARM──▶ SETTLING (3 s) ──▶ ARMED ──움직임 감�
 | `test_buzzer` | `src/tests/buzzer/` | 부저 패턴 출력, tone 출력, 계속 HIGH 출력 진단 |
 | `test_ble` | `src/tests/ble/` | 시리얼 모니터와 HM-10 사이 중계, AT 자동 진단 |
 | `test_sd` | `src/tests/sd/` | microSD 쓰기/읽기 |
+| `setup_ble` | `src/setup/ble/` | HM-10 1회 설정: 광고 이름 `UMBRELLA`와 PIN 본딩 |
+
+### HM-10 초기 설정 (모듈당 한 번)
+
+1. 폰과 연결을 끊은 상태에서 `pio run -e setup_ble -t upload`로 올린 뒤 `pio device monitor`를 엽니다.
+2. 안내가 나오면 6자리 PIN을 입력합니다. PIN은 코드나 저장소에 남지 않으니 따로 기록해 두세요.
+3. 완료되면 `main`을 다시 업로드합니다.
+4. 이전에 이 모듈과 연결했던 폰은 블루투스 설정에서 기기를 삭제한 뒤 다시 연결합니다. 이때 PIN 입력 창이 뜹니다.
 
 ```bash
 pio run                          # main + logger 빌드
