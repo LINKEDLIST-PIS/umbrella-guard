@@ -77,7 +77,7 @@ DISARMED ──ARM──▶ SETTLING (3 s) ──▶ ARMED ──움직임 감�
 
 ### 데이터 분석 스크립트 (선택)
 
-`tools/analyze_log.py`를 쓸 때만 필요합니다.
+`tools/analyze_log.py`(로그 분석)나 `tools/make_qr.py`(QR 라벨)를 쓸 때만 필요합니다.
 
 1. [Python](https://www.python.org/) 3.10 이상을 설치합니다. Windows에서는 설치 화면에서 "Add python.exe to PATH"를 체크합니다.
 2. 패키지를 설치합니다.
@@ -97,14 +97,23 @@ DISARMED ──ARM──▶ SETTLING (3 s) ──▶ ARMED ──움직임 감�
 | `test_buzzer` | `src/tests/buzzer/` | 부저 패턴 출력, tone 출력, 계속 HIGH 출력 진단 |
 | `test_ble` | `src/tests/ble/` | 시리얼 모니터와 HM-10 사이 중계, AT 자동 진단 |
 | `test_sd` | `src/tests/sd/` | microSD 쓰기/읽기 |
-| `setup_ble` | `src/setup/ble/` | HM-10 1회 설정: 광고 이름 `UMBRELLA`와 PIN 본딩 |
+| `setup_ble` | `src/setup/ble/` | HM-10 1회 설정: 광고 이름 `UMBRELLA`와 PIN 본딩, QR 라벨 정보 출력 |
 
-### HM-10 초기 설정 (모듈당 한 번)
+### HM-10 초기 설정과 QR 라벨 (모듈당 한 번)
 
-1. 폰과 연결을 끊은 상태에서 `pio run -e setup_ble -t upload`로 올린 뒤 `pio device monitor`를 엽니다.
-2. 안내가 나오면 6자리 PIN을 입력합니다. PIN은 코드나 저장소에 남지 않으니 따로 기록해 두세요.
-3. 완료되면 `main`을 다시 업로드합니다.
-4. 이전에 이 모듈과 연결했던 폰은 블루투스 설정에서 기기를 삭제한 뒤 다시 연결합니다. 이때 PIN 입력 창이 뜹니다.
+PIN은 기기마다 다르고, **QR 라벨 실물로만 관리**합니다. 코드와 저장소에는 PIN이 남지 않습니다.
+
+1. 폰과 연결을 끊은 상태에서 `pio run -e setup_ble -t upload`로 올린 뒤 `pio device monitor`를 엽니다. 모니터 로그를 파일로 저장(`log2file`)하지 마세요.
+2. 모드를 고릅니다.
+   - `n`: 새 PIN 설정. 직접 정한 6자리 PIN을 입력합니다.
+   - `l`: 이미 설정된 모듈의 라벨 정보만 다시 출력합니다.
+3. 마지막에 출력되는 `QR: UG1:…` 줄의 값으로 라벨을 만듭니다. 입력 내용은 화면에 표시되지 않습니다.
+   ```bash
+   pip install -r tools/requirements.txt   # 처음 한 번
+   python tools/make_qr.py                 # QR 문자열 붙여넣기 → labels/UMBRELLA-<ID>.png
+   ```
+4. 라벨을 인쇄해 설명서, 포장, 손잡이 안쪽처럼 주인만 보는 곳에 둡니다. `labels/`는 저장소에 올라가지 않으며, 인쇄 후 파일은 지워도 됩니다.
+5. `main`을 다시 업로드합니다. 이전에 이 모듈과 연결했던 폰은 블루투스 설정에서 기기를 삭제한 뒤 다시 등록합니다.
 
 ```bash
 pio run                          # main + logger 빌드
