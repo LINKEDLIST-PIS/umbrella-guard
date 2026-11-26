@@ -7,13 +7,20 @@
 
 사용
   python tools/analyze_log.py logs/device-monitor-xxx.log
-  python tools/analyze_log.py LOG04.CSV --plot          # PNG 그래프도 저장
-  python tools/analyze_log.py a.log --acc 2500 --gyro 2600 --count 3   # 감지기 파라미터 바꿔 보기
+  python tools/analyze_log.py LOG04.CSV --plot              # PNG 그래프도 저장
+  python tools/analyze_log.py a.log --rate 1500 --angle 25  # 감지기(fw 1.1) 파라미터 바꿔 보기
 
 해석 기준 (MPU-6050 기본 범위)
   가속도 16384 LSB = 1 g,  자이로 131 LSB = 1 dps
-  dAcc = |ax-기준| + |ay-기준| + |az-기준|   (main.cpp 와 같은 정의)
-  gsum = |gx| + |gy| + |gz|                  (main.cpp 와 같은 정의)
+  dAcc = |ax-기준| + |ay-기준| + |az-기준|
+  gsum = |gx| + |gy| + |gz|
+
+main 감지기 (fw 1.1.0, src/main/main.cpp 와 같은 정수 연산)
+  길이 방향 축 = 기준 가속도에서 절댓값이 가장 큰 축
+  rate  = 나머지 두 축 |g - 오프셋| 합의 EMA(1/32)          > --rate  이면 경보
+  angle = 가속도 EMA(1/16) 방향과 기준 자세 사이 각도(도)   > --angle 이면 경보
+  기준 자세/자이로 오프셋은 펌웨어의 SETTLING 대신 '가장 조용한 1 초' 평균을 쓴다.
+  --acc/--gyro/--count 는 이전 방식(fw 1.0) 비교용.
 """
 from __future__ import annotations
 
@@ -31,7 +38,13 @@ ROW_RE = re.compile(r"^\s*(-?\d+(?:,-?\d+){7})\s*$")
 HEADER_RE = re.compile(r"-----\s*(\S+)\s*시작\s*-----")
 END_RE = re.compile(r"-----\s*끝\s*-----")
 
-# main.cpp 기본값
+# main.cpp (fw 1.1.0) 기본값
+DEFAULT_RATE = 1200      # TILT_RATE_THRESH
+DEFAULT_ANGLE = 20.0     # TILT_ANGLE_DEG
+RATE_SHIFT = 5           # TILT_RATE_SHIFT (EMA 1/32)
+ACC_SHIFT = 4            # ACC_EMA_SHIFT   (EMA 1/16)
+
+# 이전 방식 (fw 1.0.0) 기본값 - 비교용
 DEFAULT_ACC = 2500
 DEFAULT_GYRO = 2600
 DEFAULT_COUNT = 3
@@ -135,9 +148,57 @@ def find_events(d: np.ndarray, base: np.ndarray):
 REARM_QUIET_SAMPLES = 100  # 시뮬레이션: 경보 후 2 초 조용하면 다시 ARMED 로 간주
 
 
-def simulate_main(d: np.ndarray, base: np.ndarray, acc: int, gyro: int, count: int):
-    """main.cpp 의 ARMED 판정을 재현. 실제 main 은 경보 후 DISARM 까지 유지되므로,
-    여기서는 경보 후 2 초 동안 조용해지면 다시 무장한 것으로 보고 경보 '발생 횟수'를 센다."""
+def simulate_v11(d: np.ndarray, base: np.ndarray, goff: np.ndarray, rate_thr: int, angle_deg: float):
+    """fw 1.1.0 의 ARMED 판정을 정수 연산까지 그대로 재현.
+    실제 main 은 경보 후 DISARM 까지 유지되므로, 여기서는 경보 후 2 초 동안 조용해지면
+    같은 기준으로 다시 무장한 것으로 보고 경보 '발생 횟수'를 센다.
+    반환: (경보 시각 목록, rate EMA 배열, angle 배열)"""
+    base_i = [int(round(v)) for v in base]
+    goff_i = [int(round(v)) for v in goff]
+    along = int(np.argmax(np.abs(base_i)))
+    lateral = [i for i in range(3) if i != along]
+    base_norm = max(1.0, math.sqrt(sum(v * v for v in base_i)))
+    cos_thr = math.cos(math.radians(angle_deg))
+
+    dacc = np.abs(d[:, 1:4] - base).sum(axis=1)
+    gsum = np.abs(d[:, 4:7]).sum(axis=1)
+    raw_quiet = (dacc <= 1500) & (gsum <= 1500)
+
+    def reset():
+        return 0, [v << ACC_SHIFT for v in base_i]
+
+    rate_q, acc_q = reset()
+    rates = np.zeros(len(d))
+    angles = np.zeros(len(d))
+    alarms, alarmed, quiet = [], False, 0
+    for i in range(len(d)):
+        a = [int(v) for v in d[i, 1:4]]
+        g = [int(v) for v in d[i, 4:7]]
+        if alarmed:
+            quiet = quiet + 1 if raw_quiet[i] else 0
+            if quiet >= REARM_QUIET_SAMPLES:
+                alarmed = False
+                rate_q, acc_q = reset()
+            continue
+        r = sum(abs(g[k] - goff_i[k]) for k in lateral)
+        rate_q += r - (rate_q >> RATE_SHIFT)
+        rate = rate_q >> RATE_SHIFT
+        for k in range(3):
+            acc_q[k] += a[k] - (acc_q[k] >> ACC_SHIFT)
+        lp = [acc_q[k] >> ACC_SHIFT for k in range(3)]
+        n = math.sqrt(sum(v * v for v in lp))
+        c = (sum(lp[k] * base_i[k] for k in range(3)) / (n * base_norm)) if n >= 1 else 1.0
+        rates[i] = rate
+        angles[i] = math.degrees(math.acos(max(-1.0, min(1.0, c))))
+        if rate > rate_thr or c < cos_thr:
+            alarms.append(int(d[i, 0]))
+            alarmed, quiet = True, 0
+    return alarms, rates, angles
+
+
+def simulate_legacy(d: np.ndarray, base: np.ndarray, acc: int, gyro: int, count: int):
+    """이전 방식(fw 1.0.0)의 ARMED 판정 재현 (비교용).
+    경보 후 2 초 동안 조용해지면 다시 무장한 것으로 보고 경보 '발생 횟수'를 센다."""
     dacc = np.abs(d[:, 1:4] - base).sum(axis=1)
     gsum = np.abs(d[:, 4:7]).sum(axis=1)
     over = (dacc > acc) | (gsum > gyro)
@@ -197,18 +258,28 @@ def report(seg: Segment, args) -> None:
               f"{'  [센서 포화]' if ev['sat'] else ''}  mark={ev['mark']}")
         print(f"       -> {ev['kind']}")
 
-    alarms = simulate_main(d, base, args.acc, args.gyro, args.count)
-    print(f"  main 감지기 시뮬레이션 (ACC={args.acc}, GYRO={args.gyro}, COUNT={args.count}): "
-          f"경보 {len(alarms)} 회")
-    for a in alarms:
-        ev = next((e for e in events if e["t0"] - 100 <= a <= e["t1"] + 100), None)
-        print(f"     {fmt_s(a)}  " + (f"<- 이벤트 '{ev['kind']}'" if ev else "<- 이벤트 밖 (오경보)"))
+    rest = rest_idx
+    goff = d[rest, 4:7].mean(axis=0)
+
+    def show(alarms):
+        for a in alarms:
+            ev = next((e for e in events if e["t0"] - 100 <= a <= e["t1"] + 500), None)
+            m = int(d[np.searchsorted(t, a), 7])
+            print(f"     {fmt_s(a)}  mark={m}  " + (f"<- 이벤트 '{ev['kind']}'" if ev else "<- 이벤트 밖"))
+
+    alarms, rates, angles = simulate_v11(d, base, goff, args.rate, args.angle)
+    print(f"  main 감지기 시뮬레이션 [fw 1.1] (RATE>{args.rate}, ANGLE>{args.angle:g}°): 경보 {len(alarms)} 회"
+          f"   | 정지 구간 rate 최대 {rates[quiet].max() if quiet.any() else float('nan'):.0f}")
+    show(alarms)
+    legacy = simulate_legacy(d, base, args.acc, args.gyro, args.count)
+    print(f"  (비교) 이전 방식 [fw 1.0] (ACC={args.acc}, GYRO={args.gyro}, COUNT={args.count}): 경보 {len(legacy)} 회")
+    show(legacy)
 
     if args.plot:
-        plot(seg, d, dacc, gsum, events, alarms, args)
+        plot(seg, d, rates, angles, events, alarms, args)
 
 
-def plot(seg, d, dacc, gsum, events, alarms, args):
+def plot(seg, d, rates, angles, events, alarms, args):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -219,15 +290,23 @@ def plot(seg, d, dacc, gsum, events, alarms, args):
         ax[0].plot(t, d[:, 1 + i] / 16384, lw=0.8, label=n)
     ax[0].set_ylabel("가속도 (g)")
     ax[0].legend(loc="upper right")
-    ax[1].plot(t, dacc, lw=0.8, color="tab:purple")
-    ax[1].axhline(args.acc, color="red", ls="--", lw=0.8, label=f"ACC_THRESH {args.acc}")
-    ax[1].set_ylabel("dAcc (LSB)")
-    ax[1].set_yscale("log"); ax[1].set_ylim(50, 1.5e5)
+    # mark 구간 표시 (0 이 아닌 구간에 숫자)
+    marks = d[:, 7]
+    start = 0
+    for i in range(1, len(d) + 1):
+        if i == len(d) or marks[i] != marks[start]:
+            if marks[start]:
+                ax[0].text(t[start], 1.85, f"mark {marks[start]}", fontsize=8, va="top")
+            start = i
+    ax[1].plot(t, np.maximum(rates, 1), lw=0.8, color="tab:green")
+    ax[1].axhline(args.rate, color="red", ls="--", lw=0.8, label=f"TILT_RATE_THRESH {args.rate}")
+    ax[1].set_ylabel("기울이는 회전 EMA (LSB)")
+    ax[1].set_yscale("log"); ax[1].set_ylim(10, 1e5)
     ax[1].legend(loc="upper right")
-    ax[2].plot(t, gsum, lw=0.8, color="tab:green")
-    ax[2].axhline(args.gyro, color="red", ls="--", lw=0.8, label=f"GYRO_THRESH {args.gyro}")
-    ax[2].set_ylabel("gsum (LSB)")
-    ax[2].set_yscale("log"); ax[2].set_ylim(50, 1.5e5)
+    ax[2].plot(t, angles, lw=0.8, color="tab:purple")
+    ax[2].axhline(args.angle, color="red", ls="--", lw=0.8, label=f"TILT_ANGLE_DEG {args.angle:g}")
+    ax[2].set_ylabel("기준 대비 기울기 (°)")
+    ax[2].set_ylim(0, max(args.angle * 1.5, float(np.nanmax(angles)) * 1.1 if len(angles) else 1))
     ax[2].set_xlabel("시간 (s)")
     ax[2].legend(loc="upper right")
     for ev in events:
@@ -236,7 +315,7 @@ def plot(seg, d, dacc, gsum, events, alarms, args):
     for al in alarms:
         for a in ax:
             a.axvline(al / 1000, color="red", lw=1)
-    fig.suptitle(f"{seg.name}  (주황=이벤트, 빨간 선=main 경보)")
+    fig.suptitle(f"{seg.name}  (주황=움직임 이벤트, 빨간 선=fw 1.1 경보)")
     fig.tight_layout()
     out = Path(args.outdir) / f"{Path(seg.name).stem}.png"
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -248,9 +327,11 @@ def plot(seg, d, dacc, gsum, events, alarms, args):
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("files", nargs="+", type=Path)
-    ap.add_argument("--acc", type=int, default=DEFAULT_ACC, help="ACC_THRESH (기본 %(default)s)")
-    ap.add_argument("--gyro", type=int, default=DEFAULT_GYRO, help="GYRO_THRESH (기본 %(default)s)")
-    ap.add_argument("--count", type=int, default=DEFAULT_COUNT, help="TRIGGER_COUNT (기본 %(default)s)")
+    ap.add_argument("--rate", type=int, default=DEFAULT_RATE, help="TILT_RATE_THRESH (기본 %(default)s)")
+    ap.add_argument("--angle", type=float, default=DEFAULT_ANGLE, help="TILT_ANGLE_DEG (기본 %(default)s)")
+    ap.add_argument("--acc", type=int, default=DEFAULT_ACC, help="이전 방식 ACC_THRESH (기본 %(default)s)")
+    ap.add_argument("--gyro", type=int, default=DEFAULT_GYRO, help="이전 방식 GYRO_THRESH (기본 %(default)s)")
+    ap.add_argument("--count", type=int, default=DEFAULT_COUNT, help="이전 방식 TRIGGER_COUNT (기본 %(default)s)")
     ap.add_argument("--plot", action="store_true", help="구간별 PNG 그래프 저장")
     ap.add_argument("--outdir", default="logs/plots", help="그래프 저장 폴더 (기본 %(default)s)")
     args = ap.parse_args()

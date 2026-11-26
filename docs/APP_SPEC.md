@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | 대상 | Android 앱 개발자 (Kotlin, 네이티브) |
-| 펌웨어 | `fw=1.0.0` (`src/main/main.cpp`) |
+| 펌웨어 | `fw=1.1.0` (`src/main/main.cpp`) |
 | 프로토콜 | `proto=1` |
 | 최소 Android | 8.0 (API 26) 권장, Android 12+ 권한 모델 대응 필수 |
 
@@ -63,7 +63,7 @@ HM-10은 BLE GATT 특성 하나를 **양방향 시리얼 통로**처럼 씁니�
 | `DISARM` | 보관 모드 또는 경보 해제 | `OK:DISARM` 다음 `STATE:DISARMED` |
 | `STATUS` | 현재 상태 조회 | `STATE:<상태>` |
 | `PING` | 연결 확인 | `PONG` |
-| `INFO` | 기기 정보 | `INFO:fw=1.0.0,proto=1,sensor=ok` |
+| `INFO` | 기기 정보 | `INFO:fw=1.1.0,proto=1,sensor=ok` |
 
 - `ARM`은 **멱등**입니다. 이미 SETTLING, ARMED, ALARM 상태에서 다시 보내면 `OK:ARM`과 현재 `STATE:`만 보내고 상태는 바뀌지 않습니다.
 - `DISARM`은 어떤 상태에서도 DISARMED로 바꿉니다.
@@ -112,7 +112,7 @@ HM-10은 BLE GATT 특성 하나를 **양방향 시리얼 통로**처럼 씁니�
  │── "STATUS\n" ─────────────────────────▶│
  │◀───────────────────────── "STATE:ARMED" │
  │── "INFO\n" (선택, 최초 연결 시) ────────▶│
- │◀───────── "INFO:fw=1.0.0,proto=1,sensor=ok"
+ │◀───────── "INFO:fw=1.1.0,proto=1,sensor=ok"
 ```
 
 **보관 모드와 경보**
@@ -398,3 +398,4 @@ UI는 `GuardService`가 노출하는 `StateFlow<GuardUiState>`(연결 상태, �
 | 2026-11-25 | 1.0.0 | 1 | 광고 이름 `UMBRELLA`, PIN 본딩 필수(5.3.1)로 변경. 메시지 형식은 그대로 |
 | 2026-11-25 | 1.0.0 | 1 | 실기기 확인 결과 반영: 광고에 FFE0 포함, 스캔 필터 권장안 추가(5.3) |
 | 2026-11-25 | 1.0.0 | 1 | QR 라벨 등록 추가: QR 형식 `UG1`(4.4), F-1을 QR 등록으로 변경하고 수동 등록 F-1b 추가, PIN 자동 입력과 대체 흐름(5.3.1), CAMERA 권한, 인수 테스트 1d~1f |
+| 2026-11-26 | 1.1.0 | 1 | 기기 쪽 움직임 감지 방식 개선(툭 침 오경보 감소). 프로토콜과 앱 동작은 바뀌지 않음 |
