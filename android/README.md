@@ -15,7 +15,7 @@
 |---|---|
 | 언어 / UI | Kotlin, Jetpack Compose (Material 3) |
 | minSdk / targetSdk | 26 / 35 |
-| JDK | 17~21 (Gradle 8.11.1은 그보다 새 JDK에서 실행되지 않습니다. 최신 Android Studio의 내장 JBR이 21보다 새 버전이면 **Settings → Build Tools → Gradle → Gradle JDK**에서 17~21을 고르세요.) |
+| JDK | 17\~21 (Gradle 8.11.1은 그보다 새 JDK에서 실행되지 않습니다. 최신 Android Studio의 내장 JBR이 21보다 새 버전이면 **Settings → Build Tools → Gradle → Gradle JDK**에서 17\~21을 고르세요.) |
 | 패키지 | `com.umbrellaguard.app` (필요하면 바꾸세요) |
 
 ## 구조와 명세 대응
