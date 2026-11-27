@@ -12,3 +12,6 @@ labels/
 
 # Python
 __pycache__/
+
+# IDE (Android Studio / IntelliJ 가 저장소 루트를 열었을 때 생성)
+.idea/
