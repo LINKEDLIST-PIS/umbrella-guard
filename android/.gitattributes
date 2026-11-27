@@ -1,0 +1,4 @@
+# gradlew 는 macOS/Linux 셸 스크립트라 LF 로, gradlew.bat 은 CRLF 로 유지
+gradlew text eol=lf
+*.bat text eol=crlf
+*.jar binary

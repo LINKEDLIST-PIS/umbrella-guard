@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Umbrella Guard</string>
+
+    <!-- 알림 채널 (APP_SPEC 5.4) -->
+    <string name="channel_status">보관 상태</string>
+    <string name="channel_alarm">도난 경보</string>
+    <string name="status_connecting">기기 연결 확인 중</string>
+    <string name="status_guarding">우산 보관 중</string>
+
+    <!-- 상태 표시 (APP_SPEC F-2) -->
+    <string name="state_disconnected">연결 안 됨</string>
+    <string name="state_disarmed">해제</string>
+    <string name="state_settling">준비 중 · 우산을 꽂아 두세요</string>
+    <string name="state_armed">보관 중</string>
+    <string name="state_alarm">경보</string>
+    <string name="state_unknown">상태 확인 중</string>
+
+    <!-- 동작 (APP_SPEC F-3) -->
+    <string name="action_arm">보관 시작</string>
+    <string name="action_disarm">해제</string>
+</resources>

@@ -147,7 +147,7 @@ HM-10은 BLE GATT 특성 하나를 **양방향 시리얼 통로**처럼 씁니�
 | F-1a | 페어링에 실패하면(PIN 틀림, 취소) 등록하지 않고 "PIN을 확인하세요"라고 안내합니다. 본딩 정보가 사라진 경우(사용자가 시스템 설정에서 삭제, 기기 PIN 변경)에는 다시 등록하는 흐름(QR 촬영)으로 안내합니다. |
 | F-2 | 연결 후 Notify를 켜고 `STATUS`를 보내 상태를 표시합니다. 표시 상태: 해제 / 준비 중 / 보관 중 / 경보 / 연결 안 됨 |
 | F-3 | **보관 시작**(ARM)과 **해제**(DISARM) 버튼을 둡니다. 명령을 보낸 뒤 `OK:`와 `STATE:`를 받아야 완료로 표시합니다. |
-| F-4 | 수신 데이터를 **줄 단위로 재조립**합니다. 바이트를 버퍼에 쌓고 `\n`이 나올 때마다 한 줄을 꺼냅니다. 버퍼가 256 바이트를 넘으면 비웁니다. |
+| F-4 | 수신 데이터를 **줄 단위로 재조립**합니다. 바이트를 버퍼에 쌓고 `\n`이 나올 때마다 한 줄을 꺼냅니다. 한 줄이 256 바이트를 넘으면 깨진 줄로 보고 버퍼를 비운 뒤 **다음 `\n`까지 버립니다.** 비우기만 하면 깨진 줄의 나머지가 다음 메시지 앞에 붙어서 정상 메시지까지 잃게 됩니다. |
 | F-5 | `STATE:ALARM` 또는 `ALERT:MOVED`를 받으면 **높은 우선순위 시스템 알림**(소리, 진동, 잠금 화면 표시)을 띄웁니다. 한 번의 경보에는 알림을 한 번만 띄웁니다. 알림에는 **"해제" 액션 버튼**을 넣어 바로 DISARM을 보낼 수 있게 합니다. |
 | F-6 | **연결 끊김 경고**: 보관 모드(SETTLING, ARMED, ALARM) 중 연결이 끊기면 재연결을 시도합니다. **10초** 안에 재연결하지 못하면 "우산과 연결이 끊겼습니다" 알림을 띄웁니다. 재연결에 성공하면 알림을 닫고 `STATUS`로 상태를 다시 확인합니다. |
 | F-7 | 앱이 백그라운드에 있거나 화면이 꺼져 있어도 보관 모드 동안 연결을 유지합니다(5.4). |
@@ -207,6 +207,7 @@ UG1:<MAC>:<PIN>
 <!-- Android 11 이하 -->
 <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
 <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" android:maxSdkVersion="30" />
 <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
 <!-- 알림 (Android 13+) / 백그라운드 연결 유지 -->
 <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -282,16 +283,20 @@ object Hm10 {
 ```kotlin
 class LineAssembler(private val onLine: (String) -> Unit) {
     private val buf = StringBuilder()
+    private var discarding = false          // 너무 긴 줄: 다음 '\n' 까지 버리는 중
     fun feed(bytes: ByteArray) {
         for (b in bytes) {
             val c = (b.toInt() and 0xFF).toChar()
             if (c == '\n') {
-                val line = buf.toString().trim()
+                if (!discarding) {
+                    val line = buf.toString().trim()
+                    if (line.isNotEmpty()) onLine(line)
+                }
                 buf.clear()
-                if (line.isNotEmpty()) onLine(line)
-            } else {
+                discarding = false
+            } else if (!discarding) {
                 buf.append(c)
-                if (buf.length > 256) buf.clear()
+                if (buf.length > 256) { buf.clear(); discarding = true }
             }
         }
     }
@@ -329,7 +334,9 @@ fun parse(line: String): DeviceMsg {
 ### 5.4 백그라운드 동작
 
 - 보관 모드 동안에는 **Foreground Service**(`foregroundServiceType="connectedDevice"`)가 BLE 연결을 들고 있어야 합니다. Activity가 연결을 들고 있으면 화면이 꺼질 때 끊깁니다.
-  - 서비스 알림 예: "우산 보관 중 · 연결됨"
+  - 서비스 알림 예: "우산 보관 중 · 연결됨". 실제 연결과 `STATE`를 확인하기 전에는 "기기 연결 확인 중"처럼 사실과 다르지 않은 문구를 씁니다.
+  - **시작 조건:** Android 12 이상에서는 `BLUETOOTH_CONNECT` 권한을 받은 뒤에만 서비스를 시작합니다. Android 14 이상에서 권한 없이 `connectedDevice` 타입으로 시작하면 `SecurityException`이 납니다.
+  - 시스템이 서비스를 재시작(`START_STICKY`)하면 연결이 없는데도 상태 알림만 떠 있을 수 있습니다. 재시작을 허용하려면 재시작 직후 재연결을 시도하고, 그 결과에 따라 상태 알림과 F-8 안내를 처리해야 합니다.
 - 보관을 해제하면(DISARMED) 서비스를 멈춰도 됩니다.
 - 알림 채널은 두 개로 나눕니다.
   - `guard_status`: 상태 표시용, 중요도 LOW
@@ -399,3 +406,4 @@ UI는 `GuardService`가 노출하는 `StateFlow<GuardUiState>`(연결 상태, �
 | 2026-11-25 | 1.0.0 | 1 | 실기기 확인 결과 반영: 광고에 FFE0 포함, 스캔 필터 권장안 추가(5.3) |
 | 2026-11-25 | 1.0.0 | 1 | QR 라벨 등록 추가: QR 형식 `UG1`(4.4), F-1을 QR 등록으로 변경하고 수동 등록 F-1b 추가, PIN 자동 입력과 대체 흐름(5.3.1), CAMERA 권한, 인수 테스트 1d~1f |
 | 2026-11-26 | 1.1.0 | 1 | 기기 쪽 움직임 감지 방식 개선(툭 침 오경보 감소). 프로토콜과 앱 동작은 바뀌지 않음 |
+| 2026-11-27 | 1.1.0 | 1 | 앱 골격 리뷰 반영: 권한에 `ACCESS_COARSE_LOCATION` 추가(5.1), 너무 긴 줄은 다음 `\n`까지 버리도록 F-4 변경, Foreground Service 시작 조건과 재시작 주의(5.4) |
