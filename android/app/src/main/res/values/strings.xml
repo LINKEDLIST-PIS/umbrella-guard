@@ -19,4 +19,6 @@
     <!-- 동작 (APP_SPEC F-3) -->
     <string name="action_arm">보관 시작</string>
     <string name="action_disarm">해제</string>
+    <string name="action_back">뒤로 가기</string>
+    <string name="action_register">우산 등록</string>
 </resources>

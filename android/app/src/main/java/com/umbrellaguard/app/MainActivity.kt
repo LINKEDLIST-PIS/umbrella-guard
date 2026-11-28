@@ -2,34 +2,85 @@ package com.umbrellaguard.app
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import com.umbrellaguard.app.ble.GuardUiState
 import com.umbrellaguard.app.ui.DeviceScreen
+import com.umbrellaguard.app.ui.QrScanScreen
+import com.umbrellaguard.app.ui.ScanScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        // targetSdk 35: Android 15 기기는 edge-to-edge 가 강제된다.
-        // 모든 버전에서 같은 화면이 되도록 직접 켜고, 내용은 시스템 바 안쪽(safeDrawing)에 그린다.
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme {
                 Surface(Modifier.fillMaxSize()) {
-                    // TODO: 저장된 기기가 없으면 QrScanScreen, 있으면 GuardService 상태를 구독해 DeviceScreen
-                    DeviceScreen(
-                        state = GuardUiState(),
-                        onArm = {},
-                        onDisarm = {},
-                        modifier = Modifier.safeDrawingPadding(),
-                    )
+                    GuardScreens(Modifier.safeDrawingPadding())
                 }
             }
         }
+    }
+}
+
+private enum class Screen { DEVICE, QR, SCAN }
+
+@Composable
+private fun GuardScreens(modifier: Modifier = Modifier) {
+    var screen by rememberSaveable { mutableStateOf(Screen.DEVICE) }
+
+    fun goBack() {
+        screen = when (screen) {
+            Screen.DEVICE, Screen.QR -> Screen.DEVICE
+            Screen.SCAN -> Screen.QR
+        }
+    }
+
+    BackHandler(enabled = screen != Screen.DEVICE, onBack = ::goBack)
+
+    when (screen) {
+        Screen.DEVICE -> Column(modifier.fillMaxSize()) {
+            OutlinedButton(
+                onClick = { screen = Screen.QR },
+                modifier = Modifier.padding(start = 24.dp, top = 8.dp),
+            ) {
+                Text(stringResource(R.string.action_register))
+            }
+            // TODO: Collect the GuardService state and dispatch ARM/DISARM to it.
+            DeviceScreen(
+                state = GuardUiState(),
+                onArm = {},
+                onDisarm = {},
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Screen.QR -> QrScanScreen(
+            onResult = {},
+            modifier = modifier,
+            onManualRegister = { screen = Screen.SCAN },
+            onBack = ::goBack,
+        )
+        Screen.SCAN -> ScanScreen(
+            onSelect = {},
+            modifier = modifier,
+            onBack = ::goBack,
+        )
     }
 }
